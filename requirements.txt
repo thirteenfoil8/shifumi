@@ -1,0 +1,4 @@
+keras==2.10.0
+python-dotenv==1.0.0
+setuptools==67.6.0
+tensorflow==2.10.1
