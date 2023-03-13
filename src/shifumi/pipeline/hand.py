@@ -3,14 +3,20 @@ import mediapipe as mp
 from dotenv import dotenv_values
 import json
 import xgboost as xgb
-import pandas as pd
+import joblib
+from scipy.stats import mode
 import numpy as np
+from shifumi.models.train import Train
 config = dotenv_values(".env")
+
+
+matching_dict = {0: "Rock", 1: "Paper", 2: "Scissor"}
 
 
 class handTracker():
     def __init__(self, mode=False, maxHands=2, detectionCon=0.5, modelComplexity=1, trackCon=0.5):
         self.mode = mode
+        self.train = Train()
         self.maxHands = maxHands
         self.detectionCon = detectionCon
         self.modelComplex = modelComplexity
@@ -51,6 +57,13 @@ class handTracker():
         w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
         h = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
         print(h, w)
+
+    def get_transform_list(self, lmlist):
+        points = self.train.group_points(lmlist)
+        centroid = self.train.get_centeroidnp(points)
+        new_coordinates = points - centroid
+        new_coordinates = new_coordinates.flatten()
+        return new_coordinates
 
     def gather_data(self, num_samples):
         global rock, paper, scissor
@@ -119,21 +132,23 @@ class handTracker():
 def main():
     cap = cv2.VideoCapture(0)
     tracker = handTracker()
-    model_xgb = xgb.Booster()
-    model_xgb.load_model(config["MODEL_PATH"])
-
+    model_xgb = joblib.load(config["MODEL_PATH"])
+    scaler = joblib.load(config["SCALER_PATH"])
+    values = []
     while True:
         success, image = cap.read()
         image = tracker.handsFinder(image)
         lmList = np.array(tracker.positionFinder(image))
-        last = None
 
         if len(lmList) == 42:
-            test = xgb.DMatrix(pd.DataFrame(lmList
-                                            [..., None].T, columns=list(range(0, 42))))
+            lmList = tracker.get_transform_list(lmList)
+            test = scaler.transform(lmList.reshape(1, -1))
             new = model_xgb.predict(test)
-            print(new)
-            print(lmList)
+            values.append(new)
+
+        if len(values) > 10:
+            print(matching_dict[int(mode(values, keepdims=False)[0][0])])
+            values = []
 
         cv2.imshow("Video", image)
         cv2.waitKey(1)

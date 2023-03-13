@@ -8,8 +8,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.decomposition import PCA
 from sklearn.metrics import mean_squared_error
-from sklearn.model_selection import RandomizedSearchCV, train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score, RepeatedStratifiedKFold
 from sklearn.ensemble import GradientBoostingClassifier
+import pickle
 import xgboost as xgb
 
 from dotenv import dotenv_values
@@ -68,7 +69,7 @@ class Train:
         new_coordinates = np.append(new_coordinates, label)
         return pd.Series(new_coordinates)
 
-    def train(self):
+    def train(self,search =False):
         X = self.data.drop(42, axis=1)
         y = self.data[42]
 
@@ -78,38 +79,39 @@ class Train:
         scaler = MinMaxScaler()
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
-        # lr_list = [0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1]
+        lr_list = [0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1]
+        if search:
+            for learning_rate in lr_list:
+                gb_clf = GradientBoostingClassifier(
+                    n_estimators=20, learning_rate=learning_rate, max_features=40, max_depth=2, random_state=0)
+                gb_clf.fit(X_train, y_train)
 
-        # for learning_rate in lr_list:
-        #     gb_clf = GradientBoostingClassifier(
-        #         n_estimators=20, learning_rate=learning_rate, max_features=2, max_depth=2, random_state=0)
-        #     gb_clf.fit(X_train, y_train)
+                print("Learning rate: ", learning_rate)
+                print("Accuracy score (training): {0:.3f}".format(
+                    gb_clf.score(X_train, y_train)))
+        else:
+            gb_clf = GradientBoostingClassifier(
+                    n_estimators=20, learning_rate=1, max_features=40, max_depth=5, random_state=42)
+            gb_clf.fit(X_train, y_train)
+            print("Accuracy score (training): {0:.3f}".format(
+                    gb_clf.score(X_train, y_train)))
+            with open(config["MODEL_PATH"], 'wb') as f:
+                pickle.dump(gb_clf, f)
+            with open(config["SCALER_PATH"], 'wb') as f:
+                pickle.dump(scaler, f)
 
-        #     print("Learning rate: ", learning_rate)
-        #     print("Accuracy score (training): {0:.3f}".format(
-        #         gb_clf.score(X_train, y_train)))
-
-        # params = {
-        #     "colsample_bytree": uniform(0.7, 0.3),
-        #     "gamma": uniform(0, 0.5),
-        #     "learning_rate": uniform(0.03, 0.3),  # default 0.1
-        #     "max_depth": randint(2, 6),  # default 3
-        #     "n_estimators": randint(100, 150),  # default 100
-        #     "subsample": uniform(0.6, 0.4)
-        # }
-
-        xgb_model = xgb.XGBClassifier(
-            objective="multi:softprob", random_state=42)
-        # search = RandomizedSearchCV(xgb_model, param_distributions=params, random_state=42,
-        #                             n_iter=200, cv=3, verbose=1, n_jobs=1, return_train_score=True)
-        # search.fit(X, y)
-        # self.report_best_scores(search.cv_results_, 1)
-        xgb_model.fit(X_train, y_train)
-        y_pred = xgb_model.predict(X_test)
-        # print("Learning rate: ", learning_rate)
-        print("Accuracy score (training): {0:.3f}".format(
-            xgb_model.score(X_train, y_train)))
-        xgb_model.save_model(config["MODEL_PATH"])
+        # xgb_model = xgb.XGBClassifier(
+        #     objective="multi:softprob", random_state=42)
+        # # search = RandomizedSearchCV(xgb_model, param_distributions=params, random_state=42,
+        # #                             n_iter=200, cv=3, verbose=1, n_jobs=1, return_train_score=True)
+        # # search.fit(X, y)
+        # # self.report_best_scores(search.cv_results_, 1)
+        # xgb_model.fit(X_train, y_train)
+        # y_pred = xgb_model.predict(X_test)
+        # # print("Learning rate: ", learning_rate)
+        # print("Accuracy score (training): {0:.3f}".format(
+        #     xgb_model.score(X_train, y_train)))
+        # xgb_model.save_model(config["MODEL_PATH"])
 
     def pca(self):
         X = self.data.drop(42, axis=1)
